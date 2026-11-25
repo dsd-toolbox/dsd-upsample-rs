@@ -1,0 +1,18 @@
+[package]
+name = "dsd-upsample"
+description = "Deterministic DSD upconversion: DSF, DFF or PCM in, DSD64, DSD128 or DSD256 out"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+keywords = ["dsd", "audio", "dsf", "sacd", "upsampling"]
+categories = ["multimedia::audio", "multimedia::encoding"]
+
+[dependencies]
+dsd2pcm = "0.1.2"
+same-file = "1.0.6"
+
+[dev-dependencies]
+sha2 = "0.10"

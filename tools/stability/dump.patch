@@ -1,0 +1,29 @@
+diff --git a/crates/dsd-upsample/src/convert.rs b/crates/dsd-upsample/src/convert.rs
+--- a/crates/dsd-upsample/src/convert.rs
++++ b/crates/dsd-upsample/src/convert.rs
+@@ -713,6 +713,25 @@
+ 
+ impl ModStage {
+     pub(crate) fn process(&mut self, u: &[f64]) {
++        // MEASUREMENT-ONLY PATCH: dump the modulator input aligned with the output bits.
++        {
++            use std::io::Write;
++            static DUMP: std::sync::OnceLock<Option<std::sync::Mutex<File>>> =
++                std::sync::OnceLock::new();
++            let d = DUMP.get_or_init(|| {
++                std::env::var_os("DSDUP_DUMP_U")
++                    .map(|q| std::sync::Mutex::new(File::create(q).expect("dump")))
++            });
++            if let Some(m) = d {
++                let s = (self.packer.skip.min(u.len() as u64)) as usize;
++                let t = (self.packer.left.min((u.len() - s) as u64)) as usize;
++                let mut b = Vec::with_capacity(t * 8);
++                for v in &u[s..s + t] {
++                    b.extend_from_slice(&v.to_le_bytes());
++                }
++                m.lock().unwrap().write_all(&b).expect("dump write");
++            }
++        }
+         let p = &mut self.packer;
+         self.modulator.run(u, &mut |bit| p.put(bit));
+     }

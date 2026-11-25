@@ -1,0 +1,16 @@
+[package]
+name = "dsd-upsample-capi"
+description = "C interface of dsd-upsample"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+repository.workspace = true
+
+[lib]
+name = "dsd_upsample"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+dsd-upsample = { path = "../dsd-upsample" }

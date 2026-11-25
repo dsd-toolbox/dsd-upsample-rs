@@ -1,0 +1,52 @@
+diff --git a/crates/dsd-upsample-cli/src/main.rs b/crates/dsd-upsample-cli/src/main.rs
+index cce9f6f..3d2d162 100644
+--- a/crates/dsd-upsample-cli/src/main.rs
++++ b/crates/dsd-upsample-cli/src/main.rs
+@@ -100,6 +100,12 @@ fn report(rep: &dsd_upsample::Report, secs: f64) -> String {
+             k.limited, k.clipped, k.resets
+         );
+     }
++    s += &format!(
++        "\n  peak {:.6}",
++        f64::from_bits(
++            dsd_upsample::modulator::PEAK_BITS.swap(0, std::sync::atomic::Ordering::Relaxed)
++        )
++    );
+     if !rep.pcm_clipped.is_empty() {
+         s += &format!(
+             "\n  samples clamped to 24 bits per channel: {:?}",
+diff --git a/crates/dsd-upsample/src/modulator.rs b/crates/dsd-upsample/src/modulator.rs
+index c948345..a51a025 100644
+--- a/crates/dsd-upsample/src/modulator.rs
++++ b/crates/dsd-upsample/src/modulator.rs
+@@ -19,6 +19,10 @@ pub const STATE_CLIP: f64 = 1.5;
+ /// Consecutive samples with clipped states that trigger a reset.
+ pub const RESET_RUN: u32 = 64;
+ 
++/// Measurement build only (tools/stability/peak.patch): the largest |input| any modulator
++/// has seen, as f64 bits.
++pub static PEAK_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++
+ /// Overload counters of one channel.
+ #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+ pub struct Counters {
+@@ -89,7 +93,11 @@ impl Modulator {
+         let (a, g, b, c) = (self.a, self.g, self.b, self.c);
+         let mut x = self.x;
+         let lim = self.limit;
++        let mut pk = 0.0f64;
+         for &u0 in u {
++            if u0.abs() > pk {
++                pk = u0.abs();
++            }
+             // Out of range or not a number: limited (NaN to 0); finite input in range
+             // passes unchanged.
+             let u = if u0.abs() <= lim {
+@@ -135,6 +143,7 @@ impl Modulator {
+             }
+             emit(bit);
+         }
++        PEAK_BITS.fetch_max(pk.to_bits(), std::sync::atomic::Ordering::Relaxed);
+         self.x = x;
+     }
+ }

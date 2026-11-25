@@ -1,0 +1,329 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Quality suite for release test plan item 7: the converter against its previous release.
+# Run it with tools/quality-compare.sh OLD-CLI NEW-CLI VERSION (see docs/quality/README.md).
+#
+# The [suite] and [[device]] tables are a dsd-measure suite. The converter is a black box: each
+# device runs tools/quality/dut.sh, which runs the binary named by DSDUP_CLI, so the suite takes
+# the CLI path as a parameter and nothing in dsd-measure knows this converter. The [quality]
+# table is read only by tools/quality-compare.sh (dsd-measure ignores it).
+#
+# Two parts (docs/quality/README.md): (a) every device with quality.explicit_settings appended, so
+# both builds run at equal rate, format and level: the regression gate; (b) every device as written,
+# at each build's defaults.
+# Settings as written: each build's own defaults.
+# Levels: the converter maps WAV full scale to 0 dB SACD (50 % modulation), 6.0206 dB below
+# dsd-measure's convention, and then applies its gain (--gain, explicit, or the build's default:
+# -3 dB up to 0.1.0-rc1, -6 dB since, docs/design.md#decisions). level_ref_db is the correction at a
+# gain of 0 dB; quality-compare.sh passes dsd-measure gain_db = level_ref_db minus the gain the build
+# applies (the explicit --gain, or the default its --help states, and it fails when --help states
+# none), then checks that dsd-measure's measured gain error is within 0.1 dB. The reports therefore
+# read at dsd-measure's levels for every build, and a moved default gain shows as a change of the
+# modulator's noise against the signal, not as a level error. This suite runs only through
+# quality-compare.sh (dut.sh needs DSDUP_CLI, and gain_db is set per build).
+
+[suite]
+name = "upconverter"
+profile = "full"         # the gate. More than 20 GB per DSD256 device with dsd-measure 0.1.2 (docs/quality/README.md);
+                         # iterate with `--dry-run --profile quick`
+in_rate = 44100          # replaced per run by each rate in quality.in_rates
+out = "target/quality/report"
+
+# PCM to DSD, at every output rate.
+[[device]]
+name = "PCM to DSD64"
+adapter = "cli"
+class = "B"
+dsd_rate = 2822400
+level_ref_db = 6.0206    # read by quality-compare.sh: WAV full scale is 0 dB SACD
+command = "tools/quality/dut.sh {input} {output} --rate 64"
+path = "pcm-dsd64"       # read by quality-compare.sh: names the conversion for the null test
+
+[[device]]
+name = "PCM to DSD128"
+adapter = "cli"
+class = "B"
+dsd_rate = 5644800
+level_ref_db = 6.0206    # read by quality-compare.sh: WAV full scale is 0 dB SACD
+command = "tools/quality/dut.sh {input} {output} --rate 128"
+path = "pcm-dsd128"
+
+[[device]]
+name = "PCM to DSD256"
+adapter = "cli"
+class = "B"
+dsd_rate = 11289600
+level_ref_db = 6.0206    # read by quality-compare.sh: WAV full scale is 0 dB SACD
+command = "tools/quality/dut.sh {input} {output} --rate 256"
+path = "pcm-dsd256"
+
+# DSD64 to DSD128 and DSD256. dsd-measure has no DSD-in, DSD-out device class, so the PCM test
+# signal is first made into DSD64 by dsd-measure's reference modulator (tools/quality/dsd-input.py);
+# the figures include that DSD64 stage. DSD levels pass through unchanged apart from the gain.
+[[device]]
+name = "DSD64 to DSD128"
+adapter = "cli"
+class = "B"
+dsd_rate = 5644800
+level_ref_db = 0.0       # read by quality-compare.sh: DSD levels pass through apart from the gain
+command = "tools/quality/dsd-input.py {input} {output} 128"
+path = "dsd64-dsd128"
+in_rates = [44100]       # read by quality-compare.sh: the reference modulator needs a 44.1 kHz multiple
+
+[[device]]
+name = "DSD64 to DSD256"
+adapter = "cli"
+class = "B"
+dsd_rate = 11289600
+level_ref_db = 0.0       # read by quality-compare.sh: DSD levels pass through apart from the gain
+command = "tools/quality/dsd-input.py {input} {output} 256"
+path = "dsd64-dsd256"
+in_rates = [44100]
+
+[quality]
+# The pinned dsd-measure (tag v0.1.2, commit 3eaec2d). quality-compare.sh refuses any other version.
+dsd_measure_version = "0.1.2"
+dsd_measure_install = "pipx install git+https://github.com/dsd-toolbox/dsd-measure@v0.1.2"
+in_rates = [44100, 48000]
+
+# Part (a): appended to every device's command and to the null test's conversion. Fixed values, so
+# a change of a default cannot move part (a).
+explicit_settings = ["--gain", "-3", "--order", "6"]
+
+# Null test against the previous version, for every device and input rate both builds accept:
+# one DSD64 source (dsd-measure's multitone signal, made by its reference modulator) converted
+# by each build along the device's path, decoded by the reference decoder and compared by
+# `dsd-measure null` (tools/quality/null-chain.py). PCM paths decode the source to the input
+# rate first, the same way for both builds.
+null_signal = "multitone"
+
+# Repeatability: the largest change between runs of one build that is not a change of the
+# converter, in dB, per metric. Any change beyond it, in either direction and in either part,
+# fails the comparison (exit status 1) unless a [[quality.explained]] entry covers it.
+# Measured by `tools/quality-compare.sh --repeat N CLI` (N runs of one build; the measured
+# spread is recorded in docs/quality/README.md). dsd-measure and the converter are deterministic,
+# so the measured spread is 0; the threshold is the reports' 0.1 dB resolution.
+[quality.repeatability]
+sinad_db = 0.1
+thd_db = 0.1
+noise_a_dbfs = 0.1
+dr_a_db = 0.1
+
+# Changes explained by a recorded decision, per release: quality-compare.sh marks a change
+# "explained by decision" when the version, part and metric match, the change (new minus
+# previous, in dB) lies within [min_db, max_db] and, when the entry has `paths`, the conversion
+# matches one of them. Anything else beyond repeatability fails.
+# paths: conversion names or globs as the page names them, either "PCM to DSD128" (the Conversion
+# column) or "PCM to DSD128 from 44.1 kHz" (with the input rate), spaces or hyphens
+# ("PCM-to-DSD128-*"); an entry without paths covers every conversion of its part. A paths entry
+# that matches no conversion stops the run (exit status 2).
+#
+# 0.1.0-rc2: the default gain for DSD output moved from -3 dB to -6 dB (docs/design.md#decisions,
+# the headroom decision). Part (a) runs both builds at --gain -3 and is unaffected. In part (b) the
+# signal reaches the modulator 3 dB lower against the same modulator noise: SINAD and dynamic range
+# fall, the noise floor reads higher once the output is corrected to unity, and THD rises (the 0 dB
+# SACD tone is 3 dB lower against the modulator's own residual); from DSD64 input the effect is
+# small, at DSD256 output within repeatability. Measured by two dry runs of v0.1.0-rc1
+# against the build that moved the default gain, with dsd-measure 0.1.2, quick (q) and full (f) profile, per input rate; changes
+# in dB, new minus previous; ~0 is within repeatability. One entry per metric and conversion (both
+# input rates), from the lowest to the highest change beyond repeatability, 0.3 dB (3x
+# repeatability) added at each end and rounded to 0.1 dB, so a change in the other direction fails
+# wherever the measured changes have one sign. Without an entry, any change beyond repeatability
+# fails.
+#
+#   Metric               Conversion       q 44.1   q 48     f 44.1   f 48     entry (dB)
+#   SINAD                PCM to DSD64     -2.5     -2.5     -2.13    -2.47    -2.8 to -1.8
+#   SINAD                PCM to DSD128    -2.5     -2.8     -2.80    -2.53    -3.1 to -2.2
+#   SINAD                PCM to DSD256    -3.2     -3.4     -3.34    -3.39    -3.7 to -2.9
+#   SINAD                DSD64 to DSD128  -0.4              -0.37             -0.7 to -0.1
+#   SINAD                DSD64 to DSD256  ~0                +0.00             no entry
+#   THD                  PCM to DSD64     +0.2     +1.5     +1.32    +1.29    -0.1 to +1.8
+#   THD                  PCM to DSD128    +1.5     +1.5     +1.70    +1.51    +1.2 to +2.0
+#   THD                  PCM to DSD256    +3.9     +2.4     +3.64    +2.55    +2.1 to +4.2
+#   THD                  DSD64 to DSD128  +1.0              +1.09             +0.7 to +1.4
+#   THD                  DSD64 to DSD256  ~0                -0.02             no entry
+#   Noise floor, A-wtd   PCM to DSD64     +3.0     +2.9     +2.98    +3.00    +2.6 to +3.3
+#   Noise floor, A-wtd   PCM to DSD128    +2.3     +2.4     +2.87    +3.03    +2.0 to +3.3
+#   Noise floor, A-wtd   PCM to DSD256    +2.8     +2.8     +2.95    +3.10    +2.5 to +3.4
+#   Noise floor, A-wtd   DSD64 to DSD128  +0.3              +0.24             -0.1 to +0.6
+#   Noise floor, A-wtd   DSD64 to DSD256  +0.1              +0.09             -0.2 to +0.4
+#   Dynamic range, A-wtd PCM to DSD64     -3.1     -2.6     -2.68    -3.20    -3.5 to -2.3
+#   Dynamic range, A-wtd PCM to DSD128    -2.7     -3.0     -1.24    -2.44    -3.3 to -0.9
+#   Dynamic range, A-wtd PCM to DSD256    -3.5     -4.3     -2.52    -1.66    -4.6 to -1.4
+#   Dynamic range, A-wtd DSD64 to DSD128  -2.0              +1.19             -2.3 to +1.5
+#   Dynamic range, A-wtd DSD64 to DSD256  ~0                -0.10             -0.4 to +0.2
+#
+# PCM to DSD64 THD: quick from 44.1 kHz rose by only 0.2 dB, so its range starts at -0.1 dB; a fall
+# beyond repeatability still fails. DSD64 to DSD256 moved by no more than repeatability apart from
+# the noise floor (+0.1 dB quick) and the dynamic range (-0.10 dB full); those two entries only keep
+# that from failing and fail a change of 0.3 dB or more either way.
+# DSD128: the noise under the -60 dB step depends on the signal's history (docs/quality/README.md,
+# Known limits), so the DSD128 dynamic-range figures come from two states. Quick from 44.1 kHz,
+# both builds read the low-noise state (161.6 and 158.9 dB); full from 44.1 kHz, both read the other
+# (150.4 and 149.1 dB); the other DSD128 runs read the second state too (148.2 to 152.7 dB). The two
+# DSD128 dynamic-range ranges span what both states gave, so they are wider than the others, and
+# the DSD64 to DSD128 one crosses zero (-2.0 dB quick, +1.2 dB full): it bounds that change but does
+# not give its sign. These ranges are for DSD128 paths only. A run in which the two builds read
+# different states moves the figure by about 10 dB; no entry covers that, and it is checked by hand
+# (README, Known limits).
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["sinad_db"]
+paths = ["PCM to DSD64"]
+min_db = -2.8
+max_db = -1.8
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["sinad_db"]
+paths = ["PCM to DSD128"]
+min_db = -3.1
+max_db = -2.2
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["sinad_db"]
+paths = ["PCM to DSD256"]
+min_db = -3.7
+max_db = -2.9
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["sinad_db"]
+paths = ["DSD64 to DSD128"]
+min_db = -0.7
+max_db = -0.1
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["thd_db"]
+paths = ["PCM to DSD64"]
+min_db = -0.1
+max_db = 1.8
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["thd_db"]
+paths = ["PCM to DSD128"]
+min_db = 1.2
+max_db = 2.0
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["thd_db"]
+paths = ["PCM to DSD256"]
+min_db = 2.1
+max_db = 4.2
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["thd_db"]
+paths = ["DSD64 to DSD128"]
+min_db = 0.7
+max_db = 1.4
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["noise_a_dbfs"]
+paths = ["PCM to DSD64"]
+min_db = 2.6
+max_db = 3.3
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["noise_a_dbfs"]
+paths = ["PCM to DSD128"]
+min_db = 2.0
+max_db = 3.3
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["noise_a_dbfs"]
+paths = ["PCM to DSD256"]
+min_db = 2.5
+max_db = 3.4
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["noise_a_dbfs"]
+paths = ["DSD64 to DSD128"]
+min_db = -0.1
+max_db = 0.6
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["noise_a_dbfs"]
+paths = ["DSD64 to DSD256"]
+min_db = -0.2
+max_db = 0.4
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["dr_a_db"]
+paths = ["PCM to DSD64"]
+min_db = -3.5
+max_db = -2.3
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["dr_a_db"]
+paths = ["PCM to DSD128"]
+min_db = -3.3
+max_db = -0.9
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["dr_a_db"]
+paths = ["PCM to DSD256"]
+min_db = -4.6
+max_db = -1.4
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["dr_a_db"]
+paths = ["DSD64 to DSD128"]
+min_db = -2.3
+max_db = 1.5
+decision = "docs/design.md#decisions"
+
+[[quality.explained]]
+version = "0.1.0-rc2"
+part = "defaults"
+metrics = ["dr_a_db"]
+paths = ["DSD64 to DSD256"]
+min_db = -0.4
+max_db = 0.2
+decision = "docs/design.md#decisions"

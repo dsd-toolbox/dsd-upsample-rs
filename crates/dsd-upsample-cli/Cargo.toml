@@ -1,0 +1,20 @@
+[package]
+name = "dsd-upsample-cli"
+description = "Command-line DSD upconverter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+keywords = ["dsd", "audio", "dsf", "sacd", "upsampling"]
+categories = ["multimedia::audio", "command-line-utilities"]
+
+[[bin]]
+name = "dsd-upsample"
+path = "src/main.rs"
+
+[dependencies]
+dsd-upsample = { path = "../dsd-upsample", version = "0.1.0" }
+ctrlc = { version = "3.4", features = ["termination"] }
+same-file = "1.0.6"

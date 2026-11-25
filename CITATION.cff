@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use dsd-upsample in your work, please cite it as below."
+title: "dsd-upsample"
+type: software
+authors:
+  - name: "The dsd-upsample-rs authors"
+repository-code: "https://github.com/dsd-toolbox/dsd-upsample-rs"
+url: "https://github.com/dsd-toolbox/dsd-upsample-rs"
+abstract: "Converts DSF, DFF, WAV and FLAC files to DSD128 or DSD256, and PCM to DSD64, with a one-bit sigma-delta modulator of order 5 to 8, as a Rust library, a C library and a command-line tool. Within a release the output is designed to be byte-identical on every platform (checked on Linux x86_64); noise, distortion and overload measurements are published with the commands that reproduce them."
+# The code is MIT OR Apache-2.0 (README.md, "Licence and credits"); the documentation and
+# measurement data are CC BY 4.0. Only one licence is given here: Zenodo, which archives each
+# GitHub release from this file, reads `license` as a single SPDX string and fails on a list,
+# and "MIT OR Apache-2.0" is not a valid value.
+license: Apache-2.0
+version: "0.1.0"
+date-released: "2026-11-25"
+keywords:
+  - "DSD"
+  - "DSF"
+  - "DSDIFF"
+  - "SACD"
+  - "sigma-delta modulation"
+  - "upsampling"
+  - "audio"
+  - "Rust"

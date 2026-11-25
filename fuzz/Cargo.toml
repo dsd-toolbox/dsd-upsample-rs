@@ -1,0 +1,36 @@
+[package]
+name = "dsd-upsample-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+dsd-upsample = { path = "../crates/dsd-upsample" }
+
+[[bin]]
+name = "stream"
+path = "fuzz_targets/stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "convert"
+path = "fuzz_targets/convert.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cli_args"
+path = "fuzz_targets/cli_args.rs"
+test = false
+doc = false
+bench = false
+
+# Not part of the main workspace.
+[workspace]

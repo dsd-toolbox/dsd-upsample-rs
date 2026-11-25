@@ -1,0 +1,115 @@
+# Release builds on a v* tag: the CLI and the C library for Linux x86_64 (glibc), built and
+# tested natively (the full test suite in release, golden hashes included) on ubuntu-24.04
+# before packaging, with SHA-256 sums and build provenance attestations, into a draft GitHub
+# release that the maintainer publishes.
+# Linux x86_64 at 0.1.0; aarch64 follows when our ARM test machine arrives; Windows and
+# macOS follow in a later release.
+# Only the "publish" job can write (contents, attestations) and it runs in the environment
+# "release" (required reviewers). No signing secrets are read. Nothing is pushed to
+# crates.io here (docs/release.md).
+#
+# Dry run: a manual run (workflow_dispatch) from any ref builds, tests and uploads the
+# archives as workflow artifacts only; the publish job runs only for a v* tag push.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  RUST_STABLE: 1.100.0
+defaults:
+  run:
+    shell: bash
+jobs:
+  linux:
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # A release tag must name the workspace version (Cargo.toml).
+      - name: Tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          [ "${GITHUB_REF_NAME#v}" = "$want" ] || { echo "::error::tag $GITHUB_REF_NAME is not v$want"; exit 1; }
+      # The release notes come from CHANGELOG.md (the publish job builds them the same way).
+      # A tag needs a dated section; a dry run accepts the LAUNCH-DATE placeholder.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          want=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          case $GITHUB_REF in refs/tags/v*) set -- ;; *) set -- --allow-placeholder ;; esac
+          sh .github/scripts/release-notes.sh "$@" "$want" > "$RUNNER_TEMP/release-notes.md"
+          echo "release notes for $want: $(wc -l < "$RUNNER_TEMP/release-notes.md") lines"
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal && rustup default "$RUST_STABLE"
+      # The full test suite natively on this runner, golden hashes included, before packaging.
+      - name: Tests (release, golden hashes)
+        run: cargo test --locked --workspace --release
+      - run: cargo build --locked --release -p dsd-upsample-cli -p dsd-upsample-capi
+      - name: glibc floor (2.34)
+        run: sh tools/glibc-floor.sh 2.34 target/release/dsd-upsample target/release/libdsd_upsample.so
+      - name: Package
+        run: |
+          ref=${GITHUB_REF_NAME//\//-}
+          d=dsd-upsample-${ref}-${{ matrix.target }}
+          mkdir -p "$d/lib" "$d/include"
+          cp target/release/dsd-upsample "$d/"
+          cp target/release/libdsd_upsample.so "$d/lib/libdsd_upsample.so.1"
+          ln -s libdsd_upsample.so.1 "$d/lib/libdsd_upsample.so"
+          cp target/release/libdsd_upsample.a "$d/lib/"
+          mkdir -p "$d/lib/pkgconfig"
+          sed -e 's|^prefix=@PREFIX@$|prefix=${pcfiledir}/../..|' -e "s|@VERSION@|${GITHUB_REF_NAME#v}|" \
+            crates/dsd-upsample-capi/dsd_upsample.pc.in > "$d/lib/pkgconfig/dsd_upsample.pc"
+          cp crates/dsd-upsample-capi/include/dsd_upsample.h "$d/include/"
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE "$d/"
+          tar -czf "$d.tar.gz" "$d"
+          sha256sum "$d.tar.gz" > "$d.tar.gz.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: linux-${{ matrix.target }}
+          path: dsd-upsample-*.tar.gz*
+          if-no-files-found: error
+  publish:
+    needs: [linux]
+    # Only a tag publishes; a dry run never reaches a release.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      # Build provenance attestations (Sigstore, through the workflow's OIDC token).
+      id-token: write
+      attestations: write
+    steps:
+      # The tagged tree, for CHANGELOG.md and the notes script only (into src/, apart from
+      # the archives).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          path: src
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          merge-multiple: true
+      - name: Check the archives against their sums
+        run: for f in dsd-upsample-*.sha256; do sha256sum -c "$f"; done
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: dsd-upsample-*.tar.gz
+      # Fails if CHANGELOG.md has no dated section for this version (or still says LAUNCH-DATE).
+      - name: Release notes from CHANGELOG.md
+        run: |
+          sh src/.github/scripts/release-notes.sh \
+            --link-base "https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME" \
+            "${GITHUB_REF_NAME#v}" src/CHANGELOG.md > release-notes.md
+      - name: GitHub release (draft; the maintainer publishes it)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft
+          --title "$GITHUB_REF_NAME" --notes-file release-notes.md dsd-upsample-*

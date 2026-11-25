@@ -1,0 +1,6 @@
+# Offline table generation and measurement only (never linked into the library).
+# Python 3.9 is required by deltasigma 0.2.2.
+numpy==1.21.6
+scipy==1.7.3
+deltasigma==0.2.2
+matplotlib<3.6

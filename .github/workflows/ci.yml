@@ -1,0 +1,80 @@
+# Checks on every push and pull request: format, lints, tests in debug and release (the
+# golden hashes) on x86_64 Linux (ubuntu-24.04), the C
+# interface smoke test and leak loop, `cargo doc` without warnings, the quality gate's unit
+# tests and the fuzz build.
+# tools/local-ci.sh runs the same checks on one Linux machine.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+env:
+  RUST_STABLE: 1.100.0
+  # cargo-fuzz needs nightly (sanitizer flags); pinned so the fuzz build is reproducible.
+  FUZZ_NIGHTLY: nightly-2026-11-01
+defaults:
+  run:
+    shell: bash
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal -c clippy,rustfmt && rustup default "$RUST_STABLE"
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace
+      - run: cargo test --locked --workspace --release
+      - name: C interface smoke test
+        run: CARGO_FLAGS=--locked tools/c-smoke.sh
+      - name: C interface leak loop (AddressSanitizer, LeakSanitizer)
+        run: CARGO_FLAGS=--locked tools/c-leak.sh 100
+  doc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal && rustup default "$RUST_STABLE"
+      # dsd-upsample-capi has the same library name: the Rust library is documented alone.
+      - run: cargo doc --locked -p dsd-upsample --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      # The quality gate's explained-change check (tools/quality/compare.py); Python 3.11 or later.
+      - run: python3 -I tools/quality/test_compare.py
+      # CHANGELOG.md has a non-empty section for the workspace version (the release notes);
+      # LAUNCH-DATE is allowed until the release commit dates it.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          want=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          sh .github/scripts/release-notes.sh --allow-placeholder "$want" > /dev/null
+  # The fuzz targets in fuzz/ build (running them is part of the release candidate gate).
+  fuzz-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal && rustup default "$FUZZ_NIGHTLY"
+      - run: cargo install --locked cargo-fuzz --version 0.13.2
+      # fuzz/Cargo.lock is committed: fail if it is out of date rather than resolve anew.
+      - run: cargo metadata --locked --format-version 1 >/dev/null
+        working-directory: fuzz
+      - run: cargo fuzz build
+        working-directory: fuzz
+  msrv:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.83 --profile minimal && rustup default 1.83
+      - run: cargo test --locked --workspace --release

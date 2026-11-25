@@ -1,0 +1,13 @@
+# pkg-config file for libdsd_upsample. Release archives install it as lib/pkgconfig/
+# dsd_upsample.pc with paths relative to its own location; distributions may substitute
+# fixed paths for @PREFIX@.
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: dsd_upsample
+Description: Deterministic DSD upconversion (C interface)
+Version: @VERSION@
+Libs: -L${libdir} -ldsd_upsample
+Libs.private: -lpthread -ldl -lm
+Cflags: -I${includedir}
