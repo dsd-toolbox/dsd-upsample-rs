@@ -7,6 +7,8 @@ Every release is measured against the previous one with
 item 7). Each release gets a page here, `VERSION.md`, with one table by build and one sentence of
 conclusion.
 
+Releases: [0.1.0](0.1.0.md) (against its previous candidate).
+
 ## What is measured
 
 The suite is [`suites/upconverter.toml`](../../suites/upconverter.toml): a dsd-measure suite with
