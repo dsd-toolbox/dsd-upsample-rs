@@ -26,8 +26,8 @@ byte-identical to 0.1.0's: the golden hashes are unchanged, and
   stereo and 5.1 tones, or given files), for programs that pin the engine's bytes in their
   own tests. Its stereo cases are the crate's golden hashes.
 - `tools/musl-check.sh` and a CI job: the test suite, golden hashes included, on
-  `x86_64-unknown-linux-musl`, and the C library built as a shared object on musl's libc
-  (it needs musl's loader and `libgcc_s.so.1`).
+  `x86_64-unknown-linux-musl`. The C library built as a shared object on musl's libc is
+  not covered yet and is tracked for 0.1.2.
 - `tests/channels.rs`: a 1-channel stream gives the bytes of that channel in a
   multichannel stream without dither (DSD and PCM input); with dither only channel 0
   does, because each channel's dither is seeded with its index.
