@@ -60,7 +60,8 @@ sines from an exact-phase Taylor series. Arithmetic is scalar f64 with a fixed s
 order; Rust never contracts to FMA and no target-specific features are enabled. Golden
 SHA-256 hashes of fixed synthetic conversions are checked in debug and release, and CI
 checks them on Linux x86_64, macOS (arm64) and Windows x64, and on
-`x86_64-unknown-linux-musl` (`tools/musl-check.sh`).
+`x86_64-unknown-linux-musl` (`tools/musl-check.sh`: the test suite and the golden hashes;
+the C library as a shared object on musl is not covered yet, tracked for 0.1.2).
 
 Each channel is converted on its own: without dither, a 1-channel stream fed one channel
 gives the bytes of that channel in a multichannel stream, for DSD and PCM input
