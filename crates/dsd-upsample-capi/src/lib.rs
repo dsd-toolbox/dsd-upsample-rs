@@ -788,6 +788,19 @@ mod tests {
         0
     }
 
+    /// `dsdup_version()` is the Rust crate's version, so C and Rust consumers key caches
+    /// alike (`dsd_upsample::engine_id()` is `dsd-upsample/` and this string).
+    #[test]
+    fn c_version_is_the_rust_version() {
+        // SAFETY: dsdup_version returns a pointer to a static NUL-terminated string.
+        let v = unsafe { CStr::from_ptr(dsdup_version()) };
+        assert_eq!(v.to_str().unwrap(), dsd_upsample::VERSION);
+        assert_eq!(
+            dsd_upsample::engine_id(),
+            format!("dsd-upsample/{}", v.to_str().unwrap())
+        );
+    }
+
     /// Once a free is requested, `emit` never calls the callback again.
     #[test]
     fn emit_stops_after_a_free_request() {

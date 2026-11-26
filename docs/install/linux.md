@@ -14,8 +14,16 @@ cargo install dsd-upsample-cli
 ```
 
 This builds the command and puts it in `~/.cargo/bin`. With Rust from rustup that folder is
-already on your `PATH`; with a distribution's Rust (for example Fedora's `cargo` package), add
-`~/.cargo/bin` to your `PATH` first.
+already on your `PATH`. With a distribution's Rust (for example Fedora's `cargo` package), run
+this line once and open a new terminal. Paste it as it is: `$HOME` and `$PATH` are read by the
+shell, not placeholders to fill in. It is for bash; for zsh, write `~/.zshrc` in place of
+`~/.bashrc`.
+
+```sh
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+```
+
+Then `dsd-upsample --version` prints the version.
 
 ## From a release archive
 
@@ -25,21 +33,21 @@ Download both files, check the sum, check the attestation (needs the
 [GitHub CLI](https://cli.github.com/)), extract the archive and run the command:
 
 ```sh
-curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.0/dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.0/dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
-sha256sum -c dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
-gh attestation verify dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz --repo dsd-toolbox/dsd-upsample-rs
-tar -xzf dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu/dsd-upsample --version
+curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.1/dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.1/dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz.sha256
+gh attestation verify dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz --repo dsd-toolbox/dsd-upsample-rs
+tar -xzf dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu/dsd-upsample --version
 ```
 
-`sha256sum -c` prints `dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu.tar.gz: OK`, and the last
-line prints `dsd-upsample 0.1.0`. The archive unpacks into one folder,
-`dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu/`, which holds:
+`sha256sum -c` prints `dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz: OK`, and the last
+line prints `dsd-upsample 0.1.1`. The archive unpacks into one folder,
+`dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu/`, which holds:
 
 | Path | Contents |
 |---|---|
-| `dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu/` | The folder everything below is in |
+| `dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu/` | The folder everything below is in |
 | `dsd-upsample` | The command |
 | `lib/` | `libdsd_upsample.so.1` (with a `libdsd_upsample.so` link) and `libdsd_upsample.a` |
 | `lib/pkgconfig/dsd_upsample.pc` | pkg-config file, with paths relative to its own location |
@@ -50,7 +58,7 @@ Put `dsd-upsample` in a folder on your `PATH`, for example:
 
 ```sh
 mkdir -p ~/.local/bin
-cp dsd-upsample-v0.1.0-x86_64-unknown-linux-gnu/dsd-upsample ~/.local/bin/
+cp dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu/dsd-upsample ~/.local/bin/
 ```
 
 RHEL 9 and Ubuntu (for a regular user, not root) add `~/.local/bin` to your `PATH` at login once
@@ -64,7 +72,7 @@ as the release workflow makes them). On an older system, build from crates.io in
 
 ## Tested
 
-Linux x86_64 at 0.1.0; aarch64 follows when our ARM test machine arrives.
+Linux x86_64 (since 0.1.0); aarch64 follows when our ARM test machine arrives.
 
 ## See also
 

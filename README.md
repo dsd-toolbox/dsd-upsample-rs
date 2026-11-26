@@ -19,17 +19,28 @@ reproduce them.
 | System | How | Guide |
 |---|---|---|
 | Linux, x86_64 | Release archives (`.tar.gz`, glibc 2.34 or later) with the CLI and the C library; `cargo install dsd-upsample-cli` | [Linux](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/linux.md) |
-| Linux, as a library | Rust crate `dsd-upsample`; C library `libdsd_upsample` with a pkg-config file | [Packages](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/packages.md) · [C interface](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/c-api.md) |
+| macOS, Apple Silicon and Intel (Intel: built, not run in our tests) | Universal release archive (`.zip`, signed and notarised) with the CLI and the C library; `cargo install dsd-upsample-cli` | [macOS](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/macos.md) |
+| Windows 11, x64 | Release `.zip` (not code-signed yet, named `-unsigned`) with the CLI and the C library; `cargo install dsd-upsample-cli` | [Windows](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/windows.md) |
+| Any of these, as a library | Rust crate `dsd-upsample`; C library `libdsd_upsample` (pkg-config file on Linux) | [Packages](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/packages.md) · [C interface](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/c-api.md) |
 
-Linux x86_64 at 0.1.0; aarch64 follows when our ARM test machine arrives. CI checks the output
-against golden hashes on Linux x86_64. Windows and macOS follow in a later release. The crates
-are source and may build elsewhere, but this release makes no claims for other systems.
+CI checks the output against golden hashes on Linux x86_64, macOS 15 (arm64) and Windows x64
+(Windows Server 2025), and every release build runs the full test suite on its runner before
+it is packaged; each release is also tested on Windows 11 and macOS in virtual machines. The
+Intel half of the macOS archive is built but not run in our tests, and Windows 10 is not
+tested. Linux aarch64 follows when our ARM test machine arrives; Windows on ARM once tested on
+ARM64 Windows. The crates are source and may build elsewhere, but this release makes no claims
+for other systems.
 
 ## Quick start
 
-With Rust 1.83 or later. With Rust from rustup, `cargo install` puts the command on your `PATH`;
-with a distribution's Rust (for example Fedora's `cargo` package), add `~/.cargo/bin` to your
-`PATH` first.
+With Rust 1.83 or later. With Rust from rustup, `cargo install` puts the command on your `PATH`.
+With a distribution's Rust (for example Fedora's `cargo` package), first run this line once and
+open a new terminal. Paste it as it is: `$HOME` and `$PATH` are read by the shell, not
+placeholders to fill in. It is for bash; for zsh, write `~/.zshrc` in place of `~/.bashrc`.
+
+```sh
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+```
 
 ```sh
 cargo install dsd-upsample-cli
@@ -49,7 +60,7 @@ converter resamples by 147/160 first, below the measurable noise of its output
 ## Documentation
 
 - [Documentation index](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/README.md)
-- [Install](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/README.md): Linux, packages
+- [Install](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/install/README.md): Linux, macOS, Windows, packages
 - [User guide](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/user-guide.md): converting files, batch mode, JSON progress, troubleshooting
 - [Options](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/options.md): every command-line option
 - [C interface](https://github.com/dsd-toolbox/dsd-upsample-rs/blob/main/docs/c-api.md)

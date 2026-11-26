@@ -1,0 +1,18 @@
+dsd-upsample — DSD Toolbox, https://github.com/dsd-toolbox/dsd-upsample-rs
+Copyright 2026 The dsd-upsample-rs authors
+
+The code is licensed under MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE). The
+documentation, icons and measurement data are licensed under CC BY 4.0
+(LICENSES/CC-BY-4.0.txt); README.md, section "Licence and credits", lists what that
+covers.
+
+This product includes no third-party source code. Binaries built from it link the
+dsd2pcm crate (https://github.com/dsd-toolbox/dsd2pcm-rs, MIT OR Apache-2.0), which is
+ported from scarletbook-pcm 0.7.0 (MIT OR Apache-2.0) and reads FLAC with claxon
+(Apache-2.0); keep their notices with such binaries.
+
+The modulator coefficient tables (crates/dsd-upsample/src/tables.rs) were computed
+offline with python-deltasigma 0.2.2 (BSD-2-Clause, Copyright (c) Giuseppe Venturini),
+a port of R. Schreier's Delta-Sigma Toolbox; no code from it is included.
+
+PROVENANCE.md has the file-by-file details.

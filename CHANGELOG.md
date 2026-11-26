@@ -4,6 +4,54 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.1.1 - 2026-11-26
+
+Release archives for macOS and Windows, and the fixes found after 0.1.0. The output is
+byte-identical to 0.1.0's: the golden hashes are unchanged, and
+[docs/quality/0.1.1.md](docs/quality/0.1.1.md) has the comparison.
+
+### Added
+- Release archives for macOS (universal, arm64 and x86_64; signed and notarised) and Windows
+  (x64; not code-signed yet, named `-unsigned`), with the CLI and the C library, SHA-256 sums
+  and build provenance attestations. Each build runs the full test suite in release, golden
+  hashes included, on its runner before it is packaged. Windows on ARM is not supported; it
+  comes in a later release, once tested on ARM64 Windows.
+- CI runs the tests and golden hashes on macOS 15 (arm64) and Windows x64 as well as Linux
+  x86_64.
+- Install guides for [macOS](docs/install/macos.md) and [Windows](docs/install/windows.md).
+- `dsd_upsample::VERSION` and `dsd_upsample::engine_id()` (`dsd-upsample/X.Y.Z`): the
+  engine's identity at run time for a host's cache keys; `dsdup_version()` in C gives the
+  same version.
+- `examples/golden.rs`: SHA-256 hashes of conversions at the default settings (built-in
+  stereo and 5.1 tones, or given files), for programs that pin the engine's bytes in their
+  own tests. Its stereo cases are the crate's golden hashes.
+- `tools/musl-check.sh` and a CI job: the test suite, golden hashes included, on
+  `x86_64-unknown-linux-musl`, and the C library built as a shared object on musl's libc
+  (it needs musl's loader and `libgcc_s.so.1`).
+- `tests/channels.rs`: a 1-channel stream gives the bytes of that channel in a
+  multichannel stream without dither (DSD and PCM input); with dither only channel 0
+  does, because each channel's dither is seeded with its index.
+- `tests/heap_flat.rs`, in CI: after every conversion in one process, the live heap,
+  counted exactly by a counting allocator, is back to its baseline to the byte, and the
+  threads are back, over whole conversions of each input class, cancelled and failed
+  conversions, and damaged files. Three positive controls (a leak per conversion, a leak on
+  one error path, a thread left running) must be caught.
+
+### Fixed
+- A conversion joins its front-end threads, and batch mode its worker threads, before it
+  returns, so every worker thread has ended when the call returns. No memory was lost before.
+  In `tests/heap_flat.rs` with `HEAP_FLAT_N=100` (1,400 conversions in one process), the
+  kernel still listed a worker thread at the moment of return 57 times before and 0 and 3
+  times in two runs after (a joined thread can stay listed for a few milliseconds while the
+  kernel reaps it).
+- A DSF header whose fmt chunk size puts the data chunk past the end of the file (the file
+  changed after it was opened) is reported as a damaged header (a format error), not as an
+  I/O error.
+- The `dsd-upsample` and `dsd-upsample-cli` crates include `LICENSE-MIT`, `LICENSE-APACHE`
+  and `NOTICE`; CI checks the package lists.
+- Install guides: a line to paste that puts `~/.cargo/bin` on the `PATH`, and the platform
+  lines say what is tested (macOS 15 on arm64; Windows 11 and Windows Server 2025 on x64).
+
 ## 0.1.0 - 2026-11-25
 
 First public release.

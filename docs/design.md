@@ -3,7 +3,7 @@
 # Design
 
 How dsd-upsample turns DSD or PCM into DSD, and why a release's output is designed to be
-byte-identical on every platform (checked on Linux x86_64).
+byte-identical on every platform (checked on Linux x86_64, macOS arm64 and Windows x64).
 
 ## Processing chain
 
@@ -59,7 +59,19 @@ its taps. The gain factor comes from dsd2pcm's fixed-order `db_to_linear`, test
 sines from an exact-phase Taylor series. Arithmetic is scalar f64 with a fixed summation
 order; Rust never contracts to FMA and no target-specific features are enabled. Golden
 SHA-256 hashes of fixed synthetic conversions are checked in debug and release, and CI
-checks them on Linux x86_64.
+checks them on Linux x86_64, macOS (arm64) and Windows x64, and on
+`x86_64-unknown-linux-musl` (`tools/musl-check.sh`).
+
+Each channel is converted on its own: without dither, a 1-channel stream fed one channel
+gives the bytes of that channel in a multichannel stream, for DSD and PCM input
+(`tests/channels.rs`). Dither is the exception: channel `c`'s generator is seeded with `c`,
+so with dither only channel 0 matches a 1-channel conversion.
+
+For programs that embed the library: `dsd_upsample::engine_id()` (`dsd-upsample/X.Y.Z`;
+in C, `dsdup_version()` gives `X.Y.Z`) names the engine for cache keys, and
+`cargo run --release -p dsd-upsample --example golden` prints SHA-256 hashes of
+conversions at the default settings, of built-in test tones (stereo and 5.1, DSD and PCM
+input) or of given files, to pin in the program's own tests.
 
 This holds within a release. Between releases the output may change: when a measured
 improvement is found, the defaults move to it. Every release lists its byte changes in the

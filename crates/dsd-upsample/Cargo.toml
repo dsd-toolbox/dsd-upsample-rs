@@ -16,3 +16,13 @@ same-file = "1.0.6"
 
 [dev-dependencies]
 sha2 = "0.10"
+
+# Golden hashes for consumers (docs/design.md, "Determinism"); its tests run with `cargo test`.
+[[example]]
+name = "golden"
+test = true
+
+# Its own main: no test-harness thread allocates while it counts (tests/heap_flat.rs).
+[[test]]
+name = "heap_flat"
+harness = false

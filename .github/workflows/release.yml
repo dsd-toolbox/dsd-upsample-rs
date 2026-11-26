@@ -1,15 +1,39 @@
-# Release builds on a v* tag: the CLI and the C library for Linux x86_64 (glibc), built and
-# tested natively (the full test suite in release, golden hashes included) on ubuntu-24.04
-# before packaging, with SHA-256 sums and build provenance attestations, into a draft GitHub
-# release that the maintainer publishes.
-# Linux x86_64 at 0.1.0; aarch64 follows when our ARM test machine arrives; Windows and
-# macOS follow in a later release.
-# Only the "publish" job can write (contents, attestations) and it runs in the environment
-# "release" (required reviewers). No signing secrets are read. Nothing is pushed to
-# crates.io here (docs/release.md).
+# Release builds on a v* tag: the CLI and the C library for Linux x86_64 (glibc), macOS
+# (universal, signed and notarized) and Windows x86_64 (signed unless WINDOWS_SIGNING is off),
+# with SHA-256 sums and build provenance attestations, into a draft GitHub release that the
+# maintainer publishes. Each build job first runs the full test suite in release, golden
+# hashes included, on its runner (the macOS job on arm64). Linux aarch64 follows when our ARM
+# test machine arrives; Windows on ARM ships only once tested on ARM64 Windows.
+#
+# Building and signing are separate jobs. The build jobs (linux, macos, windows) have no
+# environment and read no secret. Signing runs in macos-sign and windows-sign, which take the
+# build job's unsigned files as an artifact, check them against its SHA-256 manifest and run
+# only the signing tools: no checkout, no cargo, no build script. Those two jobs, and
+# publish, enter the environment "release" (required reviewers) only on a v* tag push; any
+# other run gives them no environment, so a dry run reads no environment secret. Only the
+# "publish" job can write (contents, attestations). Nothing is pushed to crates.io here
+# (docs/release.md).
+#
+# Signing secrets live in the GitHub environment "release", never in the repository. Names
+# (set by the maintainer):
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD   Developer ID Application certificate
+#   MACOS_SIGN_IDENTITY                           e.g. "Developer ID Application: ..."
+#   MACOS_NOTARY_KEY_ID, MACOS_NOTARY_ISSUER, MACOS_NOTARY_KEY_P8_BASE64
+#                                                 App Store Connect API key for notarytool
+#   ES_USERNAME, ES_PASSWORD, ES_CREDENTIAL_ID, ES_TOTP_SECRET
+#                                                 SSL.com eSigner cloud signing (Windows), with the
+#                                                 repository variable WINDOWS_SIGNER_THUMBPRINT
+#                                                 (the signing certificate's SHA-1 thumbprint)
+# Fails closed: on a tag, macos-sign (always) and windows-sign (when the repository variable
+# WINDOWS_SIGNING is "required", the default) stop if their signing secrets are missing, so
+# the signed path never yields unsigned binaries, and publish then does not run.
+# WINDOWS_SIGNING "off" is the deliberate exception: unsigned Windows archives, named
+# "-unsigned", packed by the windows job; only the zip is offered, never an .exe installer
+# for browser download. Any other value fails.
 #
 # Dry run: a manual run (workflow_dispatch) from any ref builds, tests and uploads the
-# archives as workflow artifacts only; the publish job runs only for a v* tag push.
+# archives as workflow artifacts only, the macOS and Windows ones unsigned and named
+# "-UNSIGNED"; the publish job runs only for a v* tag push.
 name: Release
 on:
   push:
@@ -19,6 +43,7 @@ permissions:
   contents: read
 env:
   RUST_STABLE: 1.100.0
+# bash on every runner (Windows defaults to PowerShell); steps that need pwsh say so.
 defaults:
   run:
     shell: bash
@@ -64,6 +89,8 @@ jobs:
           ln -s libdsd_upsample.so.1 "$d/lib/libdsd_upsample.so"
           cp target/release/libdsd_upsample.a "$d/lib/"
           mkdir -p "$d/lib/pkgconfig"
+          # ${pcfiledir} is pkg-config's own variable, written into the .pc file as is.
+          # shellcheck disable=SC2016
           sed -e 's|^prefix=@PREFIX@$|prefix=${pcfiledir}/../..|' -e "s|@VERSION@|${GITHUB_REF_NAME#v}|" \
             crates/dsd-upsample-capi/dsd_upsample.pc.in > "$d/lib/pkgconfig/dsd_upsample.pc"
           cp crates/dsd-upsample-capi/include/dsd_upsample.h "$d/include/"
@@ -75,10 +102,288 @@ jobs:
           name: linux-${{ matrix.target }}
           path: dsd-upsample-*.tar.gz*
           if-no-files-found: error
+  # macOS in two jobs, so that the signing secrets reach a job that builds nothing: "macos"
+  # builds and tests (no environment, no secrets) and uploads the unsigned universal files
+  # with a SHA-256 manifest; "macos-sign" checks them against the manifest, signs and
+  # notarises them on a tag, and packs the zip. It has no checkout and runs no cargo.
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal -t aarch64-apple-darwin,x86_64-apple-darwin && rustup default "$RUST_STABLE"
+      # The full test suite natively on this runner, golden hashes included, before packaging.
+      - name: Tests (release, golden hashes)
+        run: cargo test --locked --workspace --release
+      - name: Build universal
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --locked --release --target "$t" -p dsd-upsample-cli -p dsd-upsample-capi
+          done
+          mkdir -p out
+          lipo -create -output out/dsd-upsample \
+            target/aarch64-apple-darwin/release/dsd-upsample target/x86_64-apple-darwin/release/dsd-upsample
+          lipo -create -output out/libdsd_upsample.dylib \
+            target/aarch64-apple-darwin/release/libdsd_upsample.dylib target/x86_64-apple-darwin/release/libdsd_upsample.dylib
+          install_name_tool -id @rpath/libdsd_upsample.dylib out/libdsd_upsample.dylib
+      # Everything the archive holds, unsigned, and its SHA-256 manifest (paths relative to
+      # stage/), for the signing job.
+      - name: The unsigned files, for the signing job
+        run: |
+          mkdir -p stage/lib stage/include
+          cp out/dsd-upsample stage/; cp out/libdsd_upsample.dylib stage/lib/
+          cp crates/dsd-upsample-capi/include/dsd_upsample.h stage/include/
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE stage/
+          (cd stage && find . -type f | LC_ALL=C sort | xargs shasum -a 256) > stage.sha256
+          cat stage.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: macos-unsigned
+          path: |
+            stage/
+            stage.sha256
+          if-no-files-found: error
+          retention-days: 1
+  macos-sign:
+    needs: macos
+    runs-on: macos-15
+    # The signing secrets are environment secrets: only a tag run enters "release" and sees
+    # them; any other run has no environment, reads no secret and packs unsigned files.
+    environment: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    env:
+      # Whether all six are set; the values are read by the signing step only.
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_SIGN_IDENTITY != '' && secrets.MACOS_NOTARY_KEY_ID != '' && secrets.MACOS_NOTARY_ISSUER != '' && secrets.MACOS_NOTARY_KEY_P8_BASE64 != '' }}
+      # Signing only for a v* tag push: a manual run (from any ref) is a dry run.
+      DRY_RUN: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - name: Fail closed without signing secrets
+        run: |
+          if [ "$DRY_RUN" != true ] && [ "$HAS_SIGNING" != true ]; then
+            echo "::error::a release tag needs the six MACOS_* secrets in the environment 'release'; refusing to ship unsigned macOS binaries"
+            exit 1
+          fi
+          if [ "$DRY_RUN" = true ]; then echo "::notice::dry run: the macOS files are not signed or notarised"; fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: macos-unsigned
+          path: ${{ runner.temp }}/in
+      # Exactly the files the build job listed, each with its SHA-256.
+      - name: Check the files against the manifest
+        run: |
+          cd "$RUNNER_TEMP/in" || exit 1
+          (cd stage && shasum -a 256 -c ../stage.sha256)
+          diff <(cd stage && find . -type f | LC_ALL=C sort) <(sed 's/^[0-9a-f]* [ *]//' stage.sha256) \
+            || { echo "::error::the unsigned files are not the manifest's"; exit 1; }
+          # Artifacts do not keep the mode bits.
+          chmod 755 stage/dsd-upsample stage/lib/libdsd_upsample.dylib
+          mkdir -p "$GITHUB_WORKSPACE" && mv stage "$GITHUB_WORKSPACE/stage"
+      - name: Sign and notarize
+        if: env.DRY_RUN != 'true'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+          MACOS_NOTARY_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_KEY_P8_BASE64 }}
+        run: |
+          kc="$RUNNER_TEMP/sign.keychain-db"; kcpw=$(uuidgen)
+          echo "::add-mask::$kcpw"
+          # The certificate, the API key and the keychain go whether the step passes or fails.
+          trap 'rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/key.p8"; security delete-keychain "$kc" 2>/dev/null || true' EXIT
+          (umask 077 && echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12")
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc"
+          security list-keychains -d user -s "$kc"
+          for f in stage/dsd-upsample stage/lib/libdsd_upsample.dylib; do
+            codesign --force --timestamp --options runtime --sign "$MACOS_SIGN_IDENTITY" "$f"
+          done
+          (umask 077 && echo "$MACOS_NOTARY_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/key.p8")
+          ditto -c -k stage "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --key "$RUNNER_TEMP/key.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER" --wait
+          # Don't trust --wait alone: the binaries users download must verify as notarized.
+          for f in stage/dsd-upsample stage/lib/libdsd_upsample.dylib; do
+            codesign --verify --check-notarization -R='notarized' --verbose=2 "$f"
+          done
+      - name: Package
+        run: |
+          v=${GITHUB_REF_NAME//\//-}; [ "$DRY_RUN" = true ] && v=$v-UNSIGNED
+          d=dsd-upsample-$v-macos-universal
+          mv stage "$d"
+          ditto -c -k --keepParent "$d" "$d.zip"
+          shasum -a 256 "$d.zip" > "$d.zip.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: macos-universal
+          path: dsd-upsample-*.zip*
+          if-no-files-found: error
+  # Windows the same way: "windows" builds and tests (no environment, no secrets); with
+  # signing off, or on a dry run, it packs the unsigned zip itself. Otherwise it uploads the
+  # unsigned files with a SHA-256 manifest, and "windows-sign" (tag runs with
+  # WINDOWS_SIGNING "required" only) checks, signs, verifies and packs them, with no checkout
+  # and no cargo.
+  windows:
+    strategy:
+      matrix:
+        include:
+          # x86_64 only: aarch64-pc-windows-msvc is not shipped (never run on ARM64 Windows);
+          # it comes back once tested there.
+          - { os: windows-2025, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    env:
+      # Signing only for a v* tag push: a manual run (from any ref) is a dry run.
+      DRY_RUN: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') }}
+      # Repository variable: "required" (default when unset) or "off".
+      SIGN_MODE: ${{ vars.WINDOWS_SIGNING || 'required' }}
+    steps:
+      - name: Signing mode
+        run: |
+          case "$SIGN_MODE" in
+            required) echo "WINDOWS_SIGNING is required: on a tag, windows-sign signs the files (and fails without its secrets)" ;;
+            off) echo "::warning::WINDOWS_SIGNING is off: Windows archives are unsigned" ;;
+            *) echo "::error::WINDOWS_SIGNING must be required or off, not '$SIGN_MODE'"; exit 1 ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal && rustup default "$RUST_STABLE"
+      # The full test suite natively on this runner, golden hashes included, before packaging.
+      - name: Tests (release, golden hashes)
+        run: cargo test --locked --workspace --release
+      - run: cargo build --locked --release -p dsd-upsample-cli -p dsd-upsample-capi
+      - name: Stage the files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory stage\lib, stage\include | Out-Null
+          Copy-Item target\release\dsd-upsample.exe stage
+          Copy-Item target\release\dsd_upsample.dll, target\release\dsd_upsample.dll.lib, target\release\dsd_upsample.lib stage\lib
+          Copy-Item crates\dsd-upsample-capi\include\dsd_upsample.h stage\include
+          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE, NOTICE stage
+      - name: The unsigned files and their manifest, for the signing job
+        if: env.DRY_RUN != 'true' && env.SIGN_MODE == 'required'
+        run: |
+          (cd stage && find . -type f | LC_ALL=C sort | xargs sha256sum) > stage.sha256
+          cat stage.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: env.DRY_RUN != 'true' && env.SIGN_MODE == 'required'
+        with:
+          name: windows-unsigned
+          path: |
+            stage/
+            stage.sha256
+          if-no-files-found: error
+          retention-days: 1
+      - name: Package (unsigned)
+        if: env.DRY_RUN == 'true' || env.SIGN_MODE == 'off'
+        shell: pwsh
+        run: |
+          $v = $env:GITHUB_REF_NAME -replace '/', '-'
+          if ($env:DRY_RUN -eq 'true') { $v = "$v-UNSIGNED" } else { $v = "$v-unsigned" }
+          $d = "dsd-upsample-$v-${{ matrix.target }}"
+          Move-Item stage $d
+          Compress-Archive $d "$d.zip"
+          (Get-FileHash "$d.zip" -Algorithm SHA256).Hash.ToLower() + "  $d.zip" | Out-File -Encoding ascii "$d.zip.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: env.DRY_RUN == 'true' || env.SIGN_MODE == 'off'
+        with:
+          name: windows-${{ matrix.target }}
+          path: dsd-upsample-*.zip*
+          if-no-files-found: error
+  windows-sign:
+    needs: windows
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && (vars.WINDOWS_SIGNING || 'required') == 'required'
+    runs-on: windows-2025
+    environment: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    env:
+      HAS_SIGNING: ${{ secrets.ES_USERNAME != '' && secrets.ES_PASSWORD != '' && secrets.ES_CREDENTIAL_ID != '' && secrets.ES_TOTP_SECRET != '' && vars.WINDOWS_SIGNER_THUMBPRINT != '' }}
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - name: Fail closed without signing secrets
+        run: |
+          if [ "$HAS_SIGNING" != true ]; then
+            echo "::error::WINDOWS_SIGNING is required but the signing secrets are missing"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: windows-unsigned
+          path: ${{ runner.temp }}/in
+      # Exactly the files the build job listed, each with its SHA-256.
+      - name: Check the files against the manifest
+        run: |
+          cd "$RUNNER_TEMP/in" || exit 1
+          (cd stage && sha256sum -c ../stage.sha256)
+          diff <(cd stage && find . -type f | LC_ALL=C sort) <(sed 's/^[0-9a-f]* [ *]//' stage.sha256) \
+            || { echo "::error::the unsigned files are not the manifest's"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/unsigned" "$RUNNER_TEMP/signed"
+          cp stage/dsd-upsample.exe stage/lib/dsd_upsample.dll "$RUNNER_TEMP/unsigned/"
+          mkdir -p "$GITHUB_WORKSPACE" && mv stage "$GITHUB_WORKSPACE/stage"
+      # SSL.com eSigner cloud signing (no certificate file on the runner). The signing tool
+      # (with its bundled JDK) is fetched by version and checked against a pinned SHA-256
+      # before it runs in the job that holds the signing credentials.
+      - name: Fetch CodeSignTool (pinned)
+        env:
+          CST_URL: https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip
+          CST_SHA256: 4afc32e8b7f79bbe1de7e4e7049aaad4e0f754357613b9bbec0e3052f06fd36b
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "cst.zip"
+          Invoke-WebRequest -Uri $env:CST_URL -OutFile $zip
+          $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:CST_SHA256) { Write-Error "CodeSignTool SHA-256 $got, expected $env:CST_SHA256"; exit 1 }
+          Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP "cst")
+      - name: Sign (SSL.com eSigner)
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/cst
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+        run: |
+          & .\CodeSignTool.bat batch_sign "-username=${env:ES_USERNAME}" "-password=${env:ES_PASSWORD}" `
+            "-credential_id=${env:ES_CREDENTIAL_ID}" "-totp_secret=${env:ES_TOTP_SECRET}" `
+            "-input_dir_path=$env:RUNNER_TEMP\unsigned" "-output_dir_path=$env:RUNNER_TEMP\signed"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Verify the signatures and use the signed files
+        shell: pwsh
+        env:
+          SIGNER_THUMBPRINT: ${{ vars.WINDOWS_SIGNER_THUMBPRINT }}
+        run: |
+          foreach ($p in @(@("dsd-upsample.exe", "stage"), @("dsd_upsample.dll", "stage\lib"))) {
+            $n = $p[0]
+            $f = Join-Path $env:RUNNER_TEMP "signed\$n"
+            $sig = Get-AuthenticodeSignature $f
+            if ($sig.Status -ne 'Valid') { Write-Error "$n signature: $($sig.Status)"; exit 1 }
+            if (-not $sig.TimeStamperCertificate) { Write-Error "$n has no timestamp"; exit 1 }
+            if ($sig.SignerCertificate.Thumbprint -ne $env:SIGNER_THUMBPRINT) {
+              Write-Error "$n is signed by $($sig.SignerCertificate.Thumbprint), not the expected certificate"; exit 1
+            }
+            Copy-Item $f (Join-Path $p[1] $n) -Force
+          }
+      - name: Package (signed)
+        shell: pwsh
+        run: |
+          $v = $env:GITHUB_REF_NAME -replace '/', '-'
+          $d = "dsd-upsample-$v-$env:TARGET"
+          Move-Item stage $d
+          Compress-Archive $d "$d.zip"
+          (Get-FileHash "$d.zip" -Algorithm SHA256).Hash.ToLower() + "  $d.zip" | Out-File -Encoding ascii "$d.zip.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: windows-x86_64-pc-windows-msvc
+          path: dsd-upsample-*.zip*
+          if-no-files-found: error
   publish:
-    needs: [linux]
-    # Only a tag publishes; a dry run never reaches a release.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos-sign, windows, windows-sign]
+    # Only a tag publishes; a dry run never reaches a release. windows-sign is skipped when
+    # WINDOWS_SIGNING is off; any failed or cancelled job stops the publish.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !cancelled() && !failure()
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -93,14 +398,41 @@ jobs:
         with:
           persist-credentials: false
           path: src
+      # The final archives only, each by its artifact name; the unsigned staging artifacts
+      # (macos-unsigned, windows-unsigned) are never downloaded here.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
-          merge-multiple: true
-      - name: Check the archives against their sums
-        run: for f in dsd-upsample-*.sha256; do sha256sum -c "$f"; done
+          name: linux-x86_64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: macos-universal
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: windows-x86_64-pc-windows-msvc
+          path: dist
+      # Exactly these six files, or no release: the Windows name says "unsigned" when
+      # WINDOWS_SIGNING is off.
+      - name: Check the file list and the sums
+        env:
+          SIGN_MODE: ${{ vars.WINDOWS_SIGNING || 'required' }}
+        run: |
+          t=$GITHUB_REF_NAME
+          w=dsd-upsample-$t-x86_64-pc-windows-msvc.zip
+          [ "$SIGN_MODE" = off ] && w=dsd-upsample-$t-unsigned-x86_64-pc-windows-msvc.zip
+          want=$(printf '%s\n' "dsd-upsample-$t-x86_64-unknown-linux-gnu.tar.gz" \
+            "dsd-upsample-$t-macos-universal.zip" "$w" | sed 'p;s/$/.sha256/' | sort)
+          have=$(find dist -mindepth 1 -printf '%P\n' | sort)
+          if [ "$have" != "$want" ]; then
+            printf 'want:\n%s\nhave:\n%s\n' "$want" "$have"; exit 1
+          fi
+          cd dist && for f in *.sha256; do sha256sum -c "$f"; done
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
-          subject-path: dsd-upsample-*.tar.gz
+          subject-path: |
+            dist/dsd-upsample-*.tar.gz
+            dist/dsd-upsample-*.zip
       # Fails if CHANGELOG.md has no dated section for this version (or still says LAUNCH-DATE).
       - name: Release notes from CHANGELOG.md
         run: |
@@ -112,4 +444,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft
-          --title "$GITHUB_REF_NAME" --notes-file release-notes.md dsd-upsample-*
+          --title "$GITHUB_REF_NAME" --notes-file release-notes.md dist/*

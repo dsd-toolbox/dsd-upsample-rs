@@ -4,14 +4,14 @@
 
 CI proves that the code does what its tests say. A release also has to work on real music and
 from the packages people install. This page says what is tested before a release, on what, and
-what blocks it. For 0.1.0 it covers this repository on Linux x86_64 (aarch64 follows when our
-ARM test machine arrives). Windows and macOS follow in a later release.
+what blocks it. It covers this repository on Linux x86_64, macOS and Windows x64 (Linux
+aarch64 follows when our ARM test machine arrives).
 
 ## When each level runs
 
 | Level | Runs on | Contents | Blocks |
 |---|---|---|---|
-| **Change** | Local CI on the branch (`tools/local-ci.sh`) | `cargo fmt`, `clippy -D warnings`, tests in debug and release on stable and the MSRV, the C smoke test and the C leak loop under AddressSanitizer, the short soak, `cargo doc`, the quality gate's unit tests, the fuzz build | The merge |
+| **Change** | Local CI on the branch (`tools/local-ci.sh`) | `cargo fmt`, `clippy -D warnings`, tests in debug and release on stable and the MSRV, the C smoke test and the C leak loop under AddressSanitizer, the short soak, the heap-flat test and its positive controls, the licence files in the crate packages, `cargo doc`, the quality gate's unit tests, the fuzz build | The merge |
 | **Release candidate** | `vX.Y.Z-rcN` | Everything in [the candidate gate](#the-candidate-gate) | The final tag |
 | **After the tag** | The published release assets and packages | [Install checks](#install-checks) | Nothing; a failure means a patch release |
 
@@ -43,15 +43,29 @@ the candidate.
 - Passes when: no crash, hang (`-timeout=30`), out-of-memory (`-rss_limit_mb=2048`) or leak.
 - Record: runs, coverage, corpus size, duration, CPU.
 
-### 2. Long-running use
+### 2. Long-running use and memory
 
+The referee for memory is an exact in-process count of live heap bytes (a counting
+allocator), never an external recorder: heaptrack and similar tools are for investigation
+only. Every memory check has a positive control, a build or run that leaks on purpose and
+must fail it.
+
+- Heap-flat: `tests/heap_flat.rs` with `HEAP_FLAT_N=100`, and once per file of an 8-file set
+  from the music set below (`HEAP_FLAT_INPUT`). Its three positive controls are caught where
+  they were injected, and after every conversion (whole conversions of each input class, the
+  failure paths, hostile files) the live heap equals the baseline to the byte and the threads
+  are back.
+- Bytes at exit: the release CLI under a preloaded counting allocator, batch mode with 1, 10
+  and 130 conversions, plus valgrind memcheck on the 130 run; the bytes still allocated at
+  exit do not depend on the number of conversions, and every remaining block is named.
 - The soak test with 1,200 conversions (`SOAK_N=1200`): threads back to their baseline after every
-  conversion, no growth in mean resident memory.
+  conversion; resident memory recorded as an observation.
 - The C leak loop (`tools/c-leak.sh 1000`) under AddressSanitizer with leak detection.
-- A one-hour live-heap run: the CLI's batch mode over the music set below, under heaptrack or
-  valgrind's massif, with peak and final live heap recorded.
-- Passes when: no definitely or indirectly lost bytes in our code, threads back to baseline,
-  no upward trend in the live heap.
+- A one-hour run of the CLI's batch mode over the music set below: the counted live heap at
+  the idle points between conversions equal each time; resident memory and the cgroup's peak
+  recorded every minute as observations against a stated ceiling.
+- Passes when: every condition above holds, each positive control fails, and memcheck reports
+  no definitely or indirectly lost bytes.
 
 ### 3. Real music
 
@@ -77,6 +91,10 @@ way `release.yml` builds it (the same build, package step and names, `vX.Y.Z` in
 
 - Linux x86_64: the release archive (the CLI, and the C library through its pkg-config
   file) and `cargo install`.
+- macOS, in a virtual machine: the test suite, and the universal archive (the CLI and the
+  dylib) from the dry run, on arm64; output byte-identical to the Linux CLI.
+- Windows 11 x64, in a virtual machine: the test suite, and the release zip from the dry run
+  (the CLI and the DLL); output byte-identical to the Linux CLI.
 - Passes when: each installs, runs a conversion that is byte-identical to the CLI built from
   the tree, and uninstalls cleanly.
 
@@ -136,8 +154,8 @@ of the same set is part of every change (`tests/stability.rs`).
 ## Install checks
 
 After the tag, the published assets and packages are installed as a user would: from the
-Linux release archives and crates.io. A failure here means a patch release, not
-a withdrawn one.
+release archives (Linux, macOS, Windows) and crates.io. A failure here means a patch release,
+not a withdrawn one.
 
 ## Recording results
 

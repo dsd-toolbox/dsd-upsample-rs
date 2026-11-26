@@ -372,8 +372,9 @@ fn run_batch(a: &Args, o: &Options) -> Result<(), Fail> {
     let audio = std::sync::Mutex::new(0.0f64);
     let t = Instant::now();
     std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(workers);
         for _ in 0..workers {
-            s.spawn(|| loop {
+            handles.push(s.spawn(|| loop {
                 if cancelled() {
                     break;
                 }
@@ -449,7 +450,12 @@ fn run_batch(a: &Args, o: &Options) -> Result<(), Fail> {
                         eprintln!("{}: {e}", shown(inp));
                     }
                 }
-            });
+            }));
+        }
+        // The scope waits for each worker's closure; joining also waits for the threads
+        // themselves, so none is still exiting when the summary is printed.
+        for h in handles {
+            h.join().expect("batch worker panicked");
         }
     });
     let secs = t.elapsed().as_secs_f64();
