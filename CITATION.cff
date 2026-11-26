@@ -6,14 +6,18 @@ authors:
   - name: "The dsd-upsample-rs authors"
 repository-code: "https://github.com/dsd-toolbox/dsd-upsample-rs"
 url: "https://github.com/dsd-toolbox/dsd-upsample-rs"
-abstract: "Converts DSF, DFF, WAV and FLAC files to DSD128 or DSD256, and PCM to DSD64, with a one-bit sigma-delta modulator of order 5 to 8, as a Rust library, a C library and a command-line tool. Within a release the output is designed to be byte-identical on every platform (checked on Linux x86_64); noise, distortion and overload measurements are published with the commands that reproduce them."
+abstract: "Converts DSF, DFF, WAV and FLAC files to DSD128 or DSD256, and PCM to DSD64, with a one-bit sigma-delta modulator of order 5 to 8, as a Rust library, a C library and a command-line tool. Within a release the output is designed to be byte-identical on every platform (checked on Linux x86_64, macOS arm64 and Windows x64); noise, distortion and overload measurements are published with the commands that reproduce them."
 # The code is MIT OR Apache-2.0 (README.md, "Licence and credits"); the documentation and
 # measurement data are CC BY 4.0. Only one licence is given here: Zenodo, which archives each
-# GitHub release from this file, reads `license` as a single SPDX string and fails on a list,
-# and "MIT OR Apache-2.0" is not a valid value.
+# GitHub release from this file (from 0.1.1 on; 0.1.0 was released before the integration was
+# on), reads `license` as a single SPDX string and fails on a list, and "MIT OR Apache-2.0" is
+# not a valid value.
+# The DOI comes after the v0.1.1 tag, once Zenodo shows the record: the concept DOI (one for
+# all versions) as `doi:` after `version`, also named in the GitHub release notes.
 license: Apache-2.0
-version: "0.1.0"
-date-released: "2026-11-25"
+version: "0.1.1"
+# The release commit sets the date; it must be the tag's UTC day.
+date-released: "2026-11-26"
 keywords:
   - "DSD"
   - "DSF"

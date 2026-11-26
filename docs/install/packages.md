@@ -2,7 +2,7 @@
 
 # Packages
 
-Every package dsd-upsample 0.1.0 ships as: the crates and the C library, on Linux.
+Every package dsd-upsample ships as: the crates and the C library.
 
 ## Crates
 
@@ -15,8 +15,9 @@ Both need Rust 1.83 or later.
 
 ## C library
 
-`libdsd_upsample` and its header are in the Linux x86_64 release archive,
-shared and static, with a pkg-config file. See [Linux](linux.md) and the
+`libdsd_upsample` and its header are in every release archive: shared and static on Linux
+x86_64 and Windows x64, shared on macOS. The Linux archive also holds a pkg-config file. See
+[Linux](linux.md), [macOS](macos.md), [Windows](windows.md) and the
 [C interface](../c-api.md).
 
 ## See also

@@ -1,9 +1,10 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # The Change-level checks of docs/release-test-plan.md on one Linux machine, in the order CI
-# runs them: format, lints, tests in debug and release (including the short soak), the MSRV
-# tests, the C smoke test and the C leak loop under AddressSanitizer, `cargo doc` without
-# warnings, the quality gate's unit tests (Python 3.11 or later), and the fuzz build.
+# runs them: format, lints, tests in debug and release (including the short soak), the
+# heap-flat test with 10 rounds, the MSRV tests, the C smoke test and the C leak loop under
+# AddressSanitizer, the licence files in the crate packages, `cargo doc` without warnings,
+# the quality gate's unit tests (Python 3.11 or later), and the fuzz build.
 #
 #   tools/local-ci.sh
 #
@@ -20,9 +21,19 @@ step fmt; cargo +"$stable" fmt --all --check
 step clippy; cargo +"$stable" clippy --locked --workspace --all-targets -- -D warnings
 step test debug; cargo +"$stable" test --locked --workspace
 step test release; cargo +"$stable" test --locked --workspace --release
+step heap-flat; HEAP_FLAT_N=10 cargo +"$stable" test --locked --release -p dsd-upsample --test heap_flat
 step test MSRV $msrv; cargo +$msrv test --locked --workspace --release
 step C smoke; RUSTUP_TOOLCHAIN=$stable CARGO_FLAGS=--locked tools/c-smoke.sh
 step C leak loop; RUSTUP_TOOLCHAIN=$stable CARGO_FLAGS=--locked tools/c-leak.sh 100
+# --allow-dirty: a working tree under development (CI checks a clean checkout without it).
+step crate licence files
+for c in dsd-upsample dsd-upsample-cli; do
+  list=$(cargo +"$stable" package --locked --allow-dirty --list -p "$c")
+  for f in LICENSE-MIT LICENSE-APACHE NOTICE; do
+    printf '%s\n' "$list" | grep -qx "$f" || { echo "$c: $f is not in the package" >&2; exit 1; }
+    cmp "$f" "crates/$c/$f"
+  done
+done
 # The C library's crate has the same library name, so the Rust library is documented alone.
 step doc; RUSTDOCFLAGS='-D warnings' cargo +"$stable" doc --locked -p dsd-upsample --no-deps
 step quality compare unit tests; python3 -I tools/quality/test_compare.py

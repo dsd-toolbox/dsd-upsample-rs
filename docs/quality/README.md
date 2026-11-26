@@ -7,7 +7,8 @@ Every release is measured against the previous one with
 item 7). Each release gets a page here, `VERSION.md`, with one table by build and one sentence of
 conclusion.
 
-Releases: [0.1.0](0.1.0.md) (against its previous candidate).
+Releases: [0.1.0](0.1.0.md) (against its previous candidate), [0.1.1](0.1.1.md) (byte
+identity with 0.1.0).
 
 ## What is measured
 
@@ -123,6 +124,16 @@ reports. The measured spread of repeated runs of one build is below.
 | 3 | v0.1.0-rc1 (SHA-256 `03b52add…`) | 0.1.2 before its tag, quick | 0.0000 dB | identical on all 8 conversions |
 
 The same build measured with dsd-measure 0.1.1 gave the same figures to 0.001 dB.
+
+## Byte identity
+
+A patch release that changes no arithmetic of the conversion is shown byte-identical to the
+previous release instead of being measured again: identical output gives identical figures.
+`tools/quality/identity.sh OLD-CLI NEW-CLI WORKDIR` converts the same inputs (made by the old
+build's `gen`) with both builds over 111 cases (every input and output rate, both threading
+paths, the options that change the output, refusals and batch mode) and compares the outputs
+byte for byte; exit status 0 when every case is the same. The release's page then gives the
+case counts, the builds' SHA-256 and a run in which the check fails on purpose.
 
 ## Run it
 

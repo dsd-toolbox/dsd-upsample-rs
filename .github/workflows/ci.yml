@@ -1,7 +1,8 @@
 # Checks on every push and pull request: format, lints, tests in debug and release (the
-# golden hashes) on x86_64 Linux (ubuntu-24.04), the C
-# interface smoke test and leak loop, `cargo doc` without warnings, the quality gate's unit
-# tests and the fuzz build.
+# golden hashes) on x86_64 Linux (ubuntu-24.04), macOS (arm64, macos-15) and Windows x64
+# (windows-2025), the heap-flat test (Linux), the C interface smoke test (Linux and macOS)
+# and leak loop (Linux), `cargo doc` without warnings, the licence files in each crate
+# package, the quality gate's unit tests and the fuzz build.
 # tools/local-ci.sh runs the same checks on one Linux machine.
 name: CI
 on:
@@ -14,6 +15,7 @@ env:
   RUST_STABLE: 1.100.0
   # cargo-fuzz needs nightly (sanitizer flags); pinned so the fuzz build is reproducible.
   FUZZ_NIGHTLY: nightly-2026-11-01
+# bash on every runner (Windows defaults to PowerShell); steps that need pwsh say so.
 defaults:
   run:
     shell: bash
@@ -22,7 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04]
+        # No Windows on ARM leg: ARM64 Windows is not a release target (untested there).
+        os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -33,10 +36,30 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace
       - run: cargo test --locked --workspace --release
+      # Live heap back to the baseline byte for byte after every conversion (14 kinds, failure
+      # paths and hostile files included), threads back, and its three positive controls
+      # caught (tests/heap_flat.rs; Linux only: it reads /proc/self). Also part of the runs
+      # above; here with 10 rounds.
+      - name: Heap-flat test with positive controls
+        if: runner.os == 'Linux'
+        run: HEAP_FLAT_N=10 cargo test --locked --release -p dsd-upsample --test heap_flat
       - name: C interface smoke test
+        if: runner.os != 'Windows'
         run: CARGO_FLAGS=--locked tools/c-smoke.sh
       - name: C interface leak loop (AddressSanitizer, LeakSanitizer)
+        if: runner.os == 'Linux'
         run: CARGO_FLAGS=--locked tools/c-leak.sh 100
+  # musl: the test suite (golden hashes) on x86_64-unknown-linux-musl, and the C library as
+  # a shared object on musl's libc through the C smoke test (tools/musl-check.sh).
+  musl:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: rustup toolchain install "$RUST_STABLE" --profile minimal -t x86_64-unknown-linux-musl && rustup default "$RUST_STABLE"
+      - run: CARGO_FLAGS=--locked tools/musl-check.sh
   doc:
     runs-on: ubuntu-24.04
     steps:
@@ -44,6 +67,19 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install "$RUST_STABLE" --profile minimal && rustup default "$RUST_STABLE"
+      # Each published crate ships the licence texts and NOTICE: copies of the repository's
+      # files in the crate's folder (cargo packages nothing from outside it). First in the
+      # job: cargo package refuses a working tree that earlier steps have changed.
+      - name: Crates ship LICENSE-MIT, LICENSE-APACHE and NOTICE
+        run: |
+          for c in dsd-upsample dsd-upsample-cli; do
+            list=$(cargo package --locked --list -p "$c")
+            for f in LICENSE-MIT LICENSE-APACHE NOTICE; do
+              printf '%s\n' "$list" | grep -qx "$f" || { echo "::error::$c: $f is not in the package"; exit 1; }
+              cmp "$f" "crates/$c/$f" || { echo "::error::crates/$c/$f differs from $f"; exit 1; }
+            done
+            echo "$c: LICENSE-MIT, LICENSE-APACHE and NOTICE packaged"
+          done
       # dsd-upsample-capi has the same library name: the Rust library is documented alone.
       - run: cargo doc --locked -p dsd-upsample --no-deps
         env:

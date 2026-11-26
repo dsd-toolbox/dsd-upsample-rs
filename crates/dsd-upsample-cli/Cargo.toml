@@ -15,6 +15,6 @@ name = "dsd-upsample"
 path = "src/main.rs"
 
 [dependencies]
-dsd-upsample = { path = "../dsd-upsample", version = "0.1.0" }
+dsd-upsample = { path = "../dsd-upsample", version = "=0.1.1" }
 ctrlc = { version = "3.4", features = ["termination"] }
 same-file = "1.0.6"

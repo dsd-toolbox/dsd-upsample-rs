@@ -381,8 +381,10 @@ fn dsf_data_len(path: &Path) -> Result<Option<(u64, u64)>> {
     let fmt_size = le64(&h[32..40]);
     let block = u64::from(u32::from_le_bytes(h[72..76].try_into().expect("4 bytes")));
     // The reader bounded fmt_size on its own open, but the file may have changed since:
-    // an offset past u64 is a damaged header, not a wrap or a panic.
-    let Some(data_at) = 28u64.checked_add(fmt_size) else {
+    // a data chunk offset past u64 or past the end of the file is a damaged header, not a
+    // wrap, a panic or the I/O error a seek gives for an offset the OS does not take.
+    let len = f.metadata()?.len();
+    let Some(data_at) = 28u64.checked_add(fmt_size).filter(|&at| at <= len) else {
         return Err(Error::Format(format!(
             "the DSF fmt chunk size {fmt_size} is out of range; the header is damaged, \
              so nothing was converted"
@@ -1279,12 +1281,13 @@ fn run_pipelined(
         let mut to_front: Vec<SyncSender<Chunk>> = Vec::new();
         let mut from_mod: Vec<Receiver<(Vec<u8>, bool)>> = Vec::new();
         let mut handles = Vec::new();
+        let mut front_handles = Vec::new();
         for (mut f, mut m) in fronts.into_iter().zip(mods) {
             let (tx_in, rx_in) = sync_channel::<Chunk>(LAG + 1);
             let (tx_blk, rx_blk) = sync_channel::<Block>(64);
             let (tx_free, rx_free) = sync_channel::<Vec<f64>>(64);
             let (tx_out, rx_out) = sync_channel::<(Vec<u8>, bool)>(LAG + 1);
-            s.spawn(move || {
+            front_handles.push(s.spawn(move || {
                 for x in rx_in {
                     let mut ok = true;
                     f.process(&x, &mut |u| {
@@ -1297,7 +1300,7 @@ fn run_pipelined(
                         break;
                     }
                 }
-            });
+            }));
             handles.push(s.spawn(move || {
                 for b in rx_blk {
                     match b {
@@ -1354,6 +1357,12 @@ fn run_pipelined(
             .into_iter()
             .map(|h| h.join().expect("modulator thread panicked"))
             .collect();
+        // The scope already waits for every worker's closure (and so for its buffers); the
+        // joins also wait for the front-end threads themselves, so that none is still
+        // exiting when the conversion returns.
+        for h in front_handles {
+            h.join().expect("front-end thread panicked");
+        }
         result.map(|()| counters)
     })
 }
@@ -1423,8 +1432,9 @@ mod file_tests {
         std::fs::remove_dir_all(&d).unwrap();
     }
 
-    /// A DSF header whose fmt chunk size makes the data chunk's offset overflow u64 is
-    /// refused as damaged, not wrapped (release) or panicked on (overflow checks).
+    /// A DSF header whose fmt chunk size puts the data chunk's offset past u64 or past the
+    /// end of the file is refused as damaged (Format), not wrapped (release), panicked on
+    /// (overflow checks) or passed on as a seek's I/O error.
     #[test]
     fn dsf_data_len_refuses_overflowing_fmt_size() {
         let d = scratch("fmtsize");
@@ -1437,6 +1447,18 @@ mod file_tests {
         std::fs::write(&f, &h).unwrap();
         let e = dsf_data_len(&f).unwrap_err();
         assert!(matches!(e, Error::Format(_)), "{e:?}");
+        // Offsets past the end of the file, up to u64::MAX, are damaged headers too, not I/O
+        // errors (a seek past 2^63, or past the file system's largest file, fails with one).
+        for size in [1 << 40, (1u64 << 63) - 28, 1 << 63, u64::MAX - 28] {
+            h[32..40].copy_from_slice(&size.to_le_bytes());
+            std::fs::write(&f, &h).unwrap();
+            let e = dsf_data_len(&f).unwrap_err();
+            assert!(matches!(e, Error::Format(_)), "fmt size {size}: {e:?}");
+        }
+        // An offset at the end of the file is read as usual: no data chunk there.
+        h[32..40].copy_from_slice(&(92u64 - 28).to_le_bytes());
+        std::fs::write(&f, &h).unwrap();
+        assert!(matches!(dsf_data_len(&f), Ok(None)));
         std::fs::remove_dir_all(&d).unwrap();
     }
 

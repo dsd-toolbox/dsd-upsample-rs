@@ -29,6 +29,41 @@ pub use convert::{
 pub use dsd2pcm;
 pub use dsd2pcm::{Error, Result};
 pub use stream::Stream;
+
+/// This library's version, `X.Y.Z` (the crate version): the same string as the C library's
+/// `dsdup_version()`.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The engine's identity at run time, `dsd-upsample/X.Y.Z`, for a consumer's cache keys and
+/// logs.
+///
+/// Within a release, the output for the same input and [`Options`] is designed to be
+/// byte-identical on every platform and with any number of threads (golden hashes in CI);
+/// between releases it may change, and the changelog lists each such change. So a cache of
+/// converted output keyed by this id (with the input and the options) stays valid until the
+/// id changes.
+pub fn engine_id() -> &'static str {
+    concat!("dsd-upsample/", env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn engine_id_names_the_crate_version() {
+        assert_eq!(super::VERSION, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            super::engine_id(),
+            format!("dsd-upsample/{}", super::VERSION)
+        );
+        let parts: Vec<&str> = super::VERSION.split('.').collect();
+        assert_eq!(parts.len(), 3, "{}", super::VERSION);
+        assert!(
+            parts.iter().all(|p| p.parse::<u32>().is_ok()),
+            "{}",
+            super::VERSION
+        );
+    }
+}
 #[cfg(test)]
 mod stage_timings {
     //! Rough per-stage timings: `cargo test --release --lib stage_timings -- --ignored --nocapture`.

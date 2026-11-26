@@ -8,8 +8,9 @@ What the C library offers and where its full reference lives: the header comment
 
 `crates/dsd-upsample-capi` builds `libdsd_upsample`: shared (soname `libdsd_upsample.so.1` on
 Linux) and static, with the header `crates/dsd-upsample-capi/include/dsd_upsample.h`. The
-Linux x86_64 release archive holds the library, the header and a pkg-config
-file (`lib/pkgconfig/dsd_upsample.pc`).
+release archives hold the library and the header; the Linux x86_64 archive also holds a
+pkg-config file (`lib/pkgconfig/dsd_upsample.pc`). On macOS and Windows, point the compiler
+at `include/` and the linker at `lib/` yourself.
 
 ## Functions
 

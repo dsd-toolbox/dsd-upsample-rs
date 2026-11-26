@@ -11,6 +11,8 @@ WAV and FLAC to DSD128 or DSD256 (and from PCM to DSD64).
 
 - [Install guides](install/README.md): which package to use on which system
 - [Linux](install/linux.md): release archives and `cargo install`
+- [macOS](install/macos.md): universal release archive and `cargo install`
+- [Windows](install/windows.md): release zip and `cargo install`
 - [Packages](install/packages.md): crates.io and the C library
 
 ## Use

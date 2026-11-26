@@ -15,7 +15,7 @@ dsd-upsample gen OUT.wav --fs HZ [--freq HZ] [--level DB] [--seconds S] [--chann
 ```
 
 `dsd-upsample --help` (or `-h`) prints the same summary on stdout; `dsd-upsample --version`
-(or `-V`) prints `dsd-upsample` and the version, such as `dsd-upsample 0.1.0`. Both succeed
+(or `-V`) prints `dsd-upsample` and the version, such as `dsd-upsample 0.1.1`. Both succeed
 whatever else is on the command line. File names need not be valid UTF-8. `--` ends the
 options: every argument after it is a file name, even one starting with `-`
 (`dsd-upsample --rate 128 -- -take1.dsf out.dsf`). Options of the other mode are refused:
