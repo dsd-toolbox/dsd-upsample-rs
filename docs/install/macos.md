@@ -33,6 +33,8 @@ dsd-upsample-v0.1.1-macos-universal/dsd-upsample --version
 | `include/dsd_upsample.h` | C header |
 | `README.md`, `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` | Documentation, licences and notices |
 
+If you downloaded the zip in a browser and macOS asks about, or stops, the first run of `dsd-upsample`, remove the download mark once, after the sum and the attestation checks above are OK, and run it again: `xattr -d com.apple.quarantine dsd-upsample-v0.1.1-macos-universal/dsd-upsample`.
+
 Put the command in `/usr/local/bin`, which is on your `PATH` (macOS asks for your password):
 
 ```sh
