@@ -19,7 +19,7 @@ curl.exe -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v
 (Get-FileHash dsd-upsample-v0.1.1-unsigned-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower() -eq (Get-Content dsd-upsample-v0.1.1-unsigned-x86_64-pc-windows-msvc.zip.sha256).Split(' ')[0]
 ```
 
-The last line must print `True`. With the [GitHub CLI](https://cli.github.com/) installed, this
+The last line must print `True`. With the [GitHub CLI](https://cli.github.com/) installed and signed in with `gh auth login`, this
 also checks where the zip was built:
 
 ```powershell

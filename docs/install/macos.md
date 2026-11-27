@@ -10,7 +10,7 @@ library.
 The [releases page](https://github.com/dsd-toolbox/dsd-upsample-rs/releases) has a universal
 (arm64 and x86_64) `.zip`, signed and notarised, with a `.sha256` file and a build provenance
 attestation. In Terminal, download both files, check the sum, check the attestation (needs the
-[GitHub CLI](https://cli.github.com/)), unpack the archive and run the command:
+[GitHub CLI](https://cli.github.com/), signed in with `gh auth login`), unpack the archive and run the command:
 
 ```sh
 curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.1/dsd-upsample-v0.1.1-macos-universal.zip

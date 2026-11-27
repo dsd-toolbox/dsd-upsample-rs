@@ -30,7 +30,7 @@ Then `dsd-upsample --version` prints the version.
 The [releases page](https://github.com/dsd-toolbox/dsd-upsample-rs/releases) has a `.tar.gz` for
 `x86_64-unknown-linux-gnu` with a `.sha256` file and a build provenance attestation.
 Download both files, check the sum, check the attestation (needs the
-[GitHub CLI](https://cli.github.com/)), extract the archive and run the command:
+[GitHub CLI](https://cli.github.com/), signed in with `gh auth login`), extract the archive and run the command:
 
 ```sh
 curl -fLO https://github.com/dsd-toolbox/dsd-upsample-rs/releases/download/v0.1.1/dsd-upsample-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
