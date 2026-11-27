@@ -16,6 +16,7 @@ abstract: "Converts DSF, DFF, WAV and FLAC files to DSD128 or DSD256, and PCM to
 # all versions) as `doi:` after `version`, also named in the GitHub release notes.
 license: Apache-2.0
 version: "0.1.1"
+doi: "10.5281/zenodo.24581803"
 # The release commit sets the date; it must be the tag's UTC day.
 date-released: "2026-11-26"
 keywords:
